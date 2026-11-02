@@ -1,0 +1,363 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>QuickBus Booking System</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body{
+  font-family:Arial;
+  margin:0;
+  background:url("https://images.unsplash.com/photo-1544620347-c4fd4a3d5957") no-repeat center/cover;
+  min-height:100vh;
+}
+nav{
+  background:#e63946;
+  color:white;
+  padding:15px;
+  font-size:24px;
+  text-align:center;
+}
+.container{
+  background:rgba(255,255,255,0.95);
+  width:70%;
+  margin:30px auto;
+  padding:25px;
+  border-radius:10px;
+}
+input,button{
+  padding:10px;
+  margin:8px;
+  width:40%;
+}
+button{
+  background:#e63946;
+  color:white;
+  border:none;
+  cursor:pointer;
+  border-radius:5px;
+}
+button:hover{
+  background:#c92c39;
+}
+.card{
+  background:#fff;
+  margin:15px;
+  padding:15px;
+  box-shadow:0 0 10px #ccc;
+  border-radius:8px;
+}
+h2{
+  color:#e63946;
+}
+@media(max-width:700px){
+  .container{width:85%;}
+  input,button{width:90%;}
+}
+</style>
+</head>
+
+<body>
+
+<nav>🚌 QuickBus</nav>
+
+<div class="container">
+
+<!-- SEARCH BUS -->
+<div id="searchSection">
+<h2>Search Bus</h2>
+
+<input id="from" placeholder="From City">
+<input id="to" placeholder="To City"><br>
+
+<button onclick="searchBuses()">Search</button>
+</div>
+
+<!-- AVAILABLE BUSES -->
+<div id="busSection" style="display:none">
+<h2>Available Buses</h2>
+<div id="busList"></div>
+</div>
+
+<!-- PASSENGER DETAILS -->
+<div id="bookingSection" style="display:none">
+<h2>Passenger Details</h2>
+
+<input id="name" placeholder="Passenger Name">
+<input id="seat" placeholder="Seat Number"><br>
+
+<button onclick="confirmBooking()">Confirm Booking</button>
+</div>
+
+<!-- TICKETS PAGE -->
+<div id="ticketSection" style="display:none">
+<h2>My Tickets</h2>
+<div id="tickets"></div>
+</div>
+
+</div>
+
+<script>
+
+// SUPABASE CONNECTION
+
+const SUPABASE_URL = "https://tsrghdjzlfwuidblmfdu.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzcmdoZGp6bGZ3dWlkYmxtZmR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MzI1MjAsImV4cCI6MjA5NDUwODUyMH0.LgmL-0efFNbDPUBZX9Co3ZrgDnKOpiY3RHz01wNNBII";
+
+const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+);
+
+let selectedBusId = null;
+
+
+// SEARCH BUSES
+
+async function searchBuses(){
+
+let from = document.getElementById("from").value.trim();
+let to = document.getElementById("to").value.trim();
+
+if(from==="" || to===""){
+    alert("Enter From and To cities");
+    return;
+}
+
+if(from.toLowerCase() === to.toLowerCase()){
+    alert("From and To cities cannot be same");
+    return;
+}
+
+const {data,error} = await supabaseClient
+.from("buses")
+.select("*")
+.ilike("from_city",from)
+.ilike("to_city",to);
+
+if(error){
+    alert("Error searching buses");
+    console.log(error);
+    return;
+}
+
+document.getElementById("busSection").style.display="block";
+
+let list=document.getElementById("busList");
+list.innerHTML="";
+
+if(data.length===0){
+    list.innerHTML="<p>No buses available for this route.</p>";
+    return;
+}
+
+data.forEach(bus=>{
+
+list.innerHTML+=`
+<div class="card">
+
+<h3>${bus.from_city} → ${bus.to_city}</h3>
+
+<p>Time: ${bus.departure_time}</p>
+
+<p>Price: ₹${bus.price}</p>
+
+<button onclick="selectBus(${bus.id})">
+Book Seat
+</button>
+
+</div>
+`;
+
+});
+
+}
+
+
+// SELECT BUS
+
+function selectBus(id){
+
+selectedBusId=id;
+
+document.getElementById("busSection").style.display="none";
+
+document.getElementById("bookingSection").style.display="block";
+
+}
+
+
+// CONFIRM BOOKING
+
+async function confirmBooking(){
+
+let name=document.getElementById("name").value.trim();
+
+let seat=document.getElementById("seat").value.trim();
+
+if(name==="" || seat===""){
+    alert("Enter all details");
+    return;
+}
+
+if(!/^[A-Za-z0-9-]+$/.test(seat)){
+    alert("Enter a valid seat number");
+    return;
+}
+
+if(!selectedBusId){
+    alert("Please select a bus first");
+    return;
+}
+
+const {error}=await supabaseClient
+.from("bookings")
+.insert([
+{
+    passenger_name:name,
+    seat_number:seat,
+    bus_id:selectedBusId
+}
+]);
+
+if(error){
+
+if(error.code==="23505"){
+    alert("Seat already booked or duplicate journey!");
+}
+else{
+    alert("Booking failed: "+error.message);
+}
+
+console.log(error);
+return;
+
+}
+
+alert("Booking Confirmed 🎉");
+
+document.getElementById("name").value="";
+document.getElementById("seat").value="";
+
+document.getElementById("bookingSection").style.display="none";
+
+selectedBusId=null;
+
+showTicketPage();
+
+await loadTickets();
+
+}
+
+
+// SHOW TICKETS PAGE
+
+function showTicketPage(){
+
+document.getElementById("searchSection").style.display="none";
+
+document.getElementById("busSection").style.display="none";
+
+document.getElementById("bookingSection").style.display="none";
+
+document.getElementById("ticketSection").style.display="block";
+
+document.getElementById("ticketSection").innerHTML=`
+
+<h2>My Tickets</h2>
+
+<button onclick="startNewJourney()"
+style="padding:12px;background:#ff4b2b;color:white;border:none;border-radius:5px;margin-bottom:20px;">
+
+Book New Journey
+
+</button>
+
+<div id="tickets"></div>
+
+`;
+
+}
+
+
+// GO BACK TO SEARCH PAGE
+
+function startNewJourney(){
+
+selectedBusId=null;
+
+document.getElementById("ticketSection").style.display="none";
+
+document.getElementById("searchSection").style.display="block";
+
+document.getElementById("busSection").style.display="none";
+
+document.getElementById("bookingSection").style.display="none";
+
+document.getElementById("from").value="";
+document.getElementById("to").value="";
+
+}
+
+
+// LOAD ALL TICKETS
+
+async function loadTickets(){
+
+const {data,error}=await supabaseClient
+.from("bookings")
+.select("*, buses(from_city,to_city,departure_time,price)")
+.order("id",{ascending:false});
+
+let div=document.getElementById("tickets");
+
+if(error){
+    div.innerHTML="<p>Unable to load tickets.</p>";
+    console.log(error);
+    return;
+}
+
+div.innerHTML="";
+
+if(data.length===0){
+    div.innerHTML="<p>No tickets booked yet.</p>";
+    return;
+}
+
+data.forEach(t=>{
+
+let bus=t.buses;
+
+div.innerHTML+=`
+
+<div class="card">
+
+<h3>🎫 QuickBus Ticket</h3>
+
+<p><b>Passenger:</b> ${t.passenger_name}</p>
+
+<p><b>Seat Number:</b> ${t.seat_number}</p>
+
+<p><b>Bus ID:</b> ${t.bus_id}</p>
+
+<p><b>Route:</b> ${bus ? bus.from_city+" → "+bus.to_city : "Not available"}</p>
+
+<p><b>Departure Time:</b> ${bus ? bus.departure_time : "Not available"}</p>
+
+<p><b>Price:</b> ₹${bus ? bus.price : "Not available"}</p>
+
+<p><b>Booking ID:</b> ${t.id}</p>
+
+</div>
+
+`;
+
+});
+
+}
+
+</script>
+
+</body>
+</html>
